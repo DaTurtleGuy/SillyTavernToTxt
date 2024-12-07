@@ -4,7 +4,7 @@ A simple web tool to convert your SillyTavern chat logs into plain text files su
 
 ## Try It Out:
 
-**hold on i gotta deploy it first**
+**[https://daturtleguy.github.io/SillyTavernToTxt/](https://daturtleguy.github.io/SillyTavernToTxt/)**
 
 ## Features:
 
