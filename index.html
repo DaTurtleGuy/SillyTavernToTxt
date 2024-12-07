@@ -1,0 +1,259 @@
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <title>Document</title>
+
+    <style>
+        body {
+            background-color: black;
+            color: white;
+            font-family: Arial, Helvetica, sans-serif
+        }
+
+        .container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100%;
+            width: 100%;
+        }
+
+        #hiddenInput {
+            display: none;
+        }
+
+        #label {
+            cursor: pointer;
+            border: 1px solid white;
+            padding: 4px;
+            border-radius: 10px;
+        }
+
+        .window {
+            height: 100%;
+            width: 25%;
+            min-width: 1000px;
+            background-color: rgb(12, 12, 12);
+            border-radius: 10px;
+            border: 1px solid white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            box-sizing: border-box;
+
+        }
+
+        .info{
+            text-align: center;
+            margin: 0;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="window">
+            <h1>Select your chat file</h1>
+            <input type="file" name="" id="hiddenInput">
+            <label id="label" for="hiddenInput">select</label>
+
+            <div class="result" style="display: none;">
+                <h2 class="info" id="message_count">You have 0 messages</h2>
+                <h2 class="info" id="character_count">As 0 characters</h2>
+                <h2 class="info" id="character_names"></h2>
+            </div>
+        </div>
+    </div>
+
+
+</body>
+
+<script>
+    $(document).ready(function () {
+        $("#hiddenInput").change(async function () {
+            const file = this.files[0];
+            if (!file) return;
+            const data = await parseJsonOrJsonlFile(file);
+            
+
+
+            let output = "";
+            let totalMessages = 0;
+            let characters = [];
+            for (const mes of data) {
+                if (!mes.mes) continue;
+                const text = mes.mes.trim();
+                const name = mes.name.trim();
+
+                if (name.includes("SillyTavern")) continue;
+                mes.mes = collapseNewlines(text);
+                mes.mes = collapseSpaces(mes.mes);
+                mes.mes = standardizeCharacters(mes.mes);
+
+                totalMessages++;
+                if (!characters.includes(name)) {
+                    characters.push(name);
+                }
+
+                let to_add = `${name}: ${mes.mes}\n\n`;
+                output += to_add;
+            }
+
+            downloadFile(output, "output.txt", "txt");
+
+            $("#message_count").text("You have " + totalMessages + " messages");
+            $("#character_count").text("As " + characters.length + " characters");
+            $("#character_names").text("(" + characters.join(", ") + ")");
+
+            $(".result").fadeIn();
+
+            
+        })
+    })
+
+
+    async function parseJsonOrJsonlFile(file) {
+        return new Promise(async (resolve, reject) => {
+            if (!file) {
+                reject(new Error("No file selected."));
+                return;
+            }
+
+            if (!file.name.endsWith('.json') && !file.name.endsWith('.jsonl')) {
+                reject(new Error("Invalid file type. Only JSON and JSONL files are supported."));
+                return;
+            }
+
+
+            const reader = new FileReader();
+
+            reader.onload = async (e) => {
+                try {
+                    const fileContent = e.target.result;
+                    let parsedData;
+
+                    if (file.name.endsWith('.json')) {
+                        parsedData = JSON.parse(fileContent);
+                    } else { // JSONL
+                        const lines = fileContent.split('\n').filter(line => line.trim() !== ''); //Remove empty lines
+                        parsedData = lines.map(line => JSON.parse(line));
+                    }
+
+                    resolve(parsedData);
+                } catch (error) {
+                    reject(new Error(`Error parsing file: ${error.message}`));
+                }
+            };
+
+            reader.onerror = (error) => {
+                reject(new Error(`Error reading file: ${error.message}`));
+            };
+
+            reader.readAsText(file);
+        });
+    }
+
+    function downloadFile(data, filename, fileType = 'json') {
+        let dataStr;
+        let mimeType;
+
+        switch (fileType.toLowerCase()) {
+            case 'json':
+                if (typeof data === 'object') {
+                    dataStr = JSON.stringify(data, null, 2);
+                } else if (typeof data === 'string') {
+                    dataStr = data;
+                } else {
+                    console.error("Invalid data type for JSON. Must be an object or JSON string.");
+                    return;
+                }
+                mimeType = 'application/json';
+                break;
+            case 'txt':
+                if (typeof data !== 'string') {
+                    dataStr = JSON.stringify(data); //Stringify if it's an object.
+                } else {
+                    dataStr = data;
+                }
+                mimeType = 'text/plain';
+                break;
+            case 'csv': // Example for CSV - you'd need a CSV conversion function here if data is an object
+                if (typeof data === 'object') {
+                    dataStr = objectToCsv(data); //Requires a separate objectToCsv function (see below)
+                } else {
+                    dataStr = data;
+                }
+                mimeType = 'text/csv';
+                break;
+            default:
+                console.error(`Unsupported file type: ${fileType}`);
+                return;
+        }
+
+
+        const blob = new Blob([dataStr], { type: mimeType });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+    }
+
+
+    //Helper function to convert objects to CSV. This is a simplified example. 
+    //For production, use a robust CSV library.
+    function objectToCsv(obj) {
+        if (!obj || typeof obj !== 'object' || Array.isArray(obj)) {
+            return ""; //handle non-object inputs
+        }
+        const keys = Object.keys(obj);
+        const values = keys.map(key => obj[key]);
+        return keys.join(',') + '\n' + values.join(',');
+    }
+
+
+    function collapseNewlines(text) {
+        // Regular expression to match three or more consecutive newlines and replace with two
+        return text.replace(/\n{3,}/g, '\n\n');
+    }
+
+    function collapseSpaces(text) {
+        // Regular expression to match one or more whitespace characters and replace with a single space
+        return text.replace(/\s+/g, ' ');
+    }
+
+    function standardizeCharacters(text) {
+        const replacements = {
+            '“': '"', '”': '"',
+            '‘': "'", '’': "'",
+            '«': '"', '»': '"',
+            '—': '-', '–': '-',
+            'А': 'A', 'В': 'B', 'Е': 'E', 'К': 'K',
+            'М': 'M', 'Н': 'H', 'О': 'O', 'Р': 'P',
+            'С': 'C', 'Т': 'T', 'У': 'Y', 'Х': 'X',
+            'а': 'a', 'в': 'b', 'е': 'e', 'к': 'k',
+            'м': 'm', 'н': 'h', 'о': 'o', 'р': 'p',
+            'с': 'c', 'т': 't', 'у': 'y', 'х': 'x',
+        };
+
+        //Replace characters
+        for (const [original, replacement] of Object.entries(replacements)) {
+            text = text.replace(new RegExp(original, 'g'), replacement); //Use RegExp for global replacement
+        }
+
+        //Normalize and remove combining characters (equivalent to Python's unicodedata.normalize('NFKD'))
+        text = text.normalize('NFD');
+        text = text.replace(/\p{Mn}/gu, ''); //Regular expression for combining characters
+
+        return text;
+    }
+</script>
+
+</html>
